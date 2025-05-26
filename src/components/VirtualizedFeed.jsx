@@ -73,23 +73,22 @@ const VirtualizedFeed = () => {
     console.log('data->>', items)
     return (
         <div
-      ref={containerRef}
-      style={{
-        height: CONTAINER_HEIGHT,
-        overflowY: "auto",
-        border: "3px solid red",
-      }}
-    >
+            className='container'
+            ref={containerRef}
+            style={{
+                height: CONTAINER_HEIGHT,
+                overflowY: "auto",
+                border: "3px solid red",
+            }}
+        >
       <div style={{ height: items.length * ITEM_HEIGHT, position: "relative" }}>
-        {/* top spacer */}
         <div style={{ height: topHeight }} />
-
-        {/* visible items */}
         {items.slice(range.start, range.end).map((post) => (
           <div
+            id={post.id}
             key={post.id}
             style={{
-              height: ITEM_HEIGHT - 1, // account for border
+              height: ITEM_HEIGHT - 1, 
               boxSizing: "border-box",
               borderBottom: "2px solid cyan",
               padding: "8px",
@@ -101,10 +100,8 @@ const VirtualizedFeed = () => {
           </div>
         ))}
 
-        {/* bottom spacer */}
         <div style={{ height: bottomHeight }} />
 
-        {/* optional loading indicator */}
         {loading && (
           <div
             style={{
