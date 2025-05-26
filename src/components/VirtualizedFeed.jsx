@@ -1,124 +1,119 @@
-import React, {useState, useEffect, useRef, useCallback} from 'react';
-
-function fetchData(page, pageSize=20){
-    return new Promise((resolve) =>{
-        setTimeout(()=> {
-            const posts = Array.from({length: pageSize}).map((_, i) => ({
-                id: (page-1) * pageSize+i+1,
-                title: `Post #${(page - 1) * pageSize + i + 1}`,
-                content: `Infinite Scroll content ${(page - 1) * pageSize + i + 1}`
-            }))
-            resolve({ posts, totalPages: 50 });
-        }, 1000)
-    })
-}
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { fetchData } from './VirtualizedFeed_action';
+import './VirtualizedFeed.css';
 
 
 const VirtualizedFeed = () => {
+  const PAGE_SIZE = 10;
+  const THRESHOLD = 300;
 
-    const CONTAINER_HEIGHT = window.innerHeight
-    const ITEM_HEIGHT = 100
-    const PAGE_SIZE = 20;
-    const BUFFER = 5 // for extra items above/below viewport
-    const THRESHOLD = 300
-    // now declaring states
-    const [items, setItems] = useState([])
-    const [page, setPages] = useState(1)
-    const [loading, setLoading] = useState(false)
-    const [hasMore, setHasMore] = useState(true)
-    const containerRef = useRef()
+  const containerRef = useRef(null);
+  const [containerHeight, setContainerHeight] = useState(window.innerHeight); // fallback
 
-    // on initial load it will trigger data fetching
-    useEffect(() => {
-        loadMore()
-    }, []) 
+  const [images, setImages] = useState([]);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-    // this will be triggerd everytime either page, hasMore or loading state changes
-    const loadMore = useCallback( async () => {
-        if(loading || !hasMore) return 
-        setLoading(true)
-        const {posts, totalPages} = await fetchData(page, PAGE_SIZE)
-        console.log('posts', posts)
-        setItems((prevItem) => [...prevItem, ...posts])
-        setPages(p => p+1)
-        if(page >= totalPages) setHasMore(false) //means reached end
-        setLoading(false)
-    }, [page, hasMore, loading])
+  // Set actual container height after mount
+  useEffect(() => {
+    if (containerRef.current) {
+      setContainerHeight(containerRef.current.clientHeight);
+    }
+  }, []);
 
-    // now we will write scroll feature to loadMore data or not
+  // Fetch more images
+  const loadMore = useCallback(async () => {
+    if (loading || !hasMore) return;
+    setLoading(true);
 
-    const [range, setRange] = useState({start: 0, end: 0})
-    const onScroll =() => {
-        const containerTop = containerRef.current.scrollTop;
-        const totalItems = items.length;
-        const totalItemHeight = totalItems * ITEM_HEIGHT
-        if(containerTop + CONTAINER_HEIGHT >= totalItemHeight - THRESHOLD){
-            loadMore()
-        }
-        // now computing visible window
-        let startIndex = Math.max(0, Math.floor(containerTop/ITEM_HEIGHT) - BUFFER)
-        let endIndex = Math.min(totalItems, Math.ceil((containerTop + CONTAINER_HEIGHT) / ITEM_HEIGHT) + BUFFER)
-        setRange({start: startIndex, end: endIndex})
+    try {
+      const result = await fetchData(page, PAGE_SIZE);
+      const newImages = result.photos || [];
+
+      if (newImages.length === 0) {
+        setHasMore(false);
+      } else {
+        setImages(prev => [...prev, ...newImages]);
+        setPage(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Failed to load images:', error);
     }
 
-    // now attaching eventListener
-    useEffect(() => {
-        const node = containerRef.current;
-        node.addEventListener('scroll', onScroll)
-        return () => node.removeEventListener('scroll', onScroll)
-    }, [items, loading, hasMore])
+    setLoading(false);
+  }, [page, hasMore, loading]);
 
-    const topHeight = range.start * ITEM_HEIGHT;
-    const bottomHeight = (items.length - range.end) * ITEM_HEIGHT;
-    console.log('data->>', items)
-    return (
-        <div
-            className='container'
-            ref={containerRef}
-            style={{
-                height: CONTAINER_HEIGHT,
-                overflowY: "auto",
-                border: "3px solid red",
-            }}
-        >
-      <div style={{ height: items.length * ITEM_HEIGHT, position: "relative" }}>
-        <div style={{ height: topHeight }} />
-        {items.slice(range.start, range.end).map((post) => (
-          <div
-            id={post.id}
-            key={post.id}
-            style={{
-              height: ITEM_HEIGHT - 1, 
-              boxSizing: "border-box",
-              borderBottom: "2px solid cyan",
-              padding: "8px",
-              position: "relative",
-            }}
-          >
-            <h4 style={{ margin: 0 }}>{post.title}</h4>
-            <p style={{ margin: "4px 0 0" }}>{post.content}</p>
-          </div>
-        ))}
+  useEffect(() => {
+    loadMore();
+  }, []);
 
-        <div style={{ height: bottomHeight }} />
+    // Scroll handler
+    const onScroll = () => {
+      const node = containerRef.current;
+    if (!node) return;
+    const { scrollTop, scrollHeight, clientHeight } = node;
 
-        {loading && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 0,
-              width: "100%",
-              textAlign: "center",
-              padding: "16px",
-              background: "rgba(255,255,255,0.8)",
-            }}
-          >
-            Loading…
-          </div>
+      // If near the bottom, load more
+      if (scrollHeight - scrollTop - clientHeight < THRESHOLD) {
+        loadMore();
+      }
+  };
+
+  useEffect(() => {
+  const node = containerRef.current;
+  if (!node) return;
+
+  node.addEventListener('scroll', onScroll);
+  return () => node.removeEventListener('scroll', onScroll);
+}, [images, loading, hasMore]);
+
+
+const handleDownload = async (url, filename) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'image.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.error('Download failed:', err);
+  }
+};
+
+  return (
+    <div ref={containerRef} className="feed-container">
+        <div className="feed-grid">
+          {images.map((image, index) => (
+            <div key={`${image.id}-${index}`} className="image-card">
+              <img
+                src={image.src.medium}
+                alt={image.alt || 'Galaxy wallpaper'}
+              />
+              <p className="image-caption">📸 {image.photographer}</p>
+
+            <button
+              onClick={() => handleDownload(image.src.original, `pexels-${image.id}.jpg`)}
+              className="download-button"
+            >
+              ⬇ Download
+            </button>
+
+            </div>
+            ))}
+        </div>
+            
+       {loading && (
+          <div className="loader">Loading…</div>
         )}
-      </div>
-    </div>
-    )
-}
+        </div>
+    );
+};
 
 export default VirtualizedFeed;
